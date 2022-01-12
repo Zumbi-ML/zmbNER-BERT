@@ -8,31 +8,31 @@ import dataset
 import engine
 from model import EntityModel
 
+from transformers import logging
+logging.set_verbosity_error()
+
 def predict():
     meta_data = joblib.load("meta.bin")
-    enc_pos = meta_data["enc_pos"]
     enc_tag = meta_data["enc_tag"]
 
-    num_pos = len(list(enc_pos.classes_))
     num_tag = len(list(enc_tag.classes_))
 
     sentence = """
-    abhishek is going to india
+    O presidente Bolsonaro questionou a ANVISA (Agência Nacional de Vigilância Sanitária) sobre a vacinação infantil durante o discurso em São Paulo, conforme reportou a Folha de São Paulo.
     """
-    tokenized_sentence = config.TOKENIZER.encode(sentence)
-
     sentence = sentence.split()
-    print(sentence)
-    print(tokenized_sentence)
 
+    tokenized_sentence = config.TOKENIZER.encode(sentence)
+    print(tokenized_sentence)
+    
     test_dataset = dataset.EntityDataset(
         texts=[sentence],
-        pos=[[0] * len(sentence)],
         tags=[[0] * len(sentence)]
     )
 
     device = torch.device("cuda")
-    model = EntityModel(num_tag=num_tag, num_pos=num_pos)
+
+    model = EntityModel(num_tag=num_tag)
     model.load_state_dict(torch.load(config.MODEL_PATH))
     model.to(device)
 
@@ -40,15 +40,13 @@ def predict():
         data = test_dataset[0]
         for k, v in data.items():
             data[k] = v.to(device).unsqueeze(0)
-        tag, pos, _ = model(**data)
+        tag, _ = model(**data)
 
-        print(
-            enc_tag.inverse_transform(
-                tag.argmax(2).cpu().numpy().reshape(-1)
-            )[:len(tokenized_sentence)]
-        )
-        print(
-            enc_pos.inverse_transform(
-                pos.argmax(2).cpu().numpy().reshape(-1)
-            )[:len(tokenized_sentence)]
-        )
+        labels = enc_tag.inverse_transform(
+                    tag.argmax(2).cpu().numpy().reshape(-1)
+                )[1:len(tokenized_sentence)-1]
+
+    for i in range(len(sentence)):
+        print(f"{sentence[i]}\t{labels[i]}")
+
+predict()

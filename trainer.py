@@ -15,45 +15,44 @@ import dataset
 import engine
 from model import EntityModel
 
+from transformers import logging
+logging.set_verbosity_error()
+
 def process_data(data_path):
-    df = pd.read_csv(data_path, encoding="latin-1")
+    df = pd.read_csv(data_path, encoding="utf-8", sep="\t")
+
     df.loc[:, "Sentence #"] = df["Sentence #"].fillna(method="ffill")
 
-    enc_pos = preprocessing.LabelEncoder()
     enc_tag = preprocessing.LabelEncoder()
 
-    df.loc[:, "POS"] = enc_pos.fit_transform(df["POS"])
     df.loc[:, "Tag"] = enc_tag.fit_transform(df["Tag"])
 
     sentences = df.groupby("Sentence #")["Word"].apply(list).values
-    pos = df.groupby("Sentence #")["POS"].apply(list).values
+
     tag = df.groupby("Sentence #")["Tag"].apply(list).values
-    return sentences, pos, tag, enc_pos, enc_tag
+    return sentences, tag, enc_tag
+
 
 def train():
-    sentences, pos, tag, enc_pos, enc_tag = process_data(config.TRAINING_FILE)
+    sentences, tag, enc_tag = process_data(config.TRAINING_FILE)
 
     meta_data = {
-        "enc_pos": enc_pos,
         "enc_tag": enc_tag
     }
 
     joblib.dump(meta_data, "meta.bin")
 
-    num_pos = len(list(enc_pos.classes_))
     num_tag = len(list(enc_tag.classes_))
 
     (
         train_sentences,
         test_sentences,
-        train_pos,
-        test_pos,
         train_tag,
         test_tag
-    ) = model_selection.train_test_split(sentences, pos, tag, random_state=42, test_size=0.1)
+    ) = model_selection.train_test_split(sentences, tag, random_state=42, test_size=0.3)
 
     train_dataset = dataset.EntityDataset(
-        texts=train_sentences, pos=train_pos, tags=train_tag
+        texts=train_sentences, tags=train_tag
     )
 
     train_data_loader = torch.utils.data.DataLoader(
@@ -61,7 +60,7 @@ def train():
     )
 
     valid_dataset = dataset.EntityDataset(
-        texts=test_sentences, pos=test_pos, tags=test_tag
+        texts=test_sentences, tags=test_tag
     )
 
     valid_data_loader = torch.utils.data.DataLoader(
@@ -69,7 +68,7 @@ def train():
     )
 
     device = torch.device("cuda")
-    model = EntityModel(num_tag=num_tag, num_pos=num_pos)
+    model = EntityModel(num_tag=num_tag)
     model.to(device)
 
     param_optimizer = list(model.named_parameters())
